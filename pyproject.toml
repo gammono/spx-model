@@ -1,0 +1,11 @@
+[project]
+name = "spx-model"
+version = "0.1.0"
+description = "Deterministic SPX return, risk, and gap analysis model"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
