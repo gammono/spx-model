@@ -15,24 +15,85 @@ class GapBuckets:
     edges: tuple[float, ...] = (
         -np.inf,
         -0.02,
+        -0.015,
         -0.01,
         -0.005,
         0.0,
         0.005,
         0.01,
+        0.015,
         0.02,
         np.inf,
     )
     labels: tuple[str, ...] = (
         "< -2.0%",
-        "-2.0% to -1.0%",
+        "-2.0% to -1.5%",
+        "-1.5% to -1.0%",
         "-1.0% to -0.5%",
         "-0.5% to 0.0%",
         "0.0% to 0.5%",
         "0.5% to 1.0%",
-        "1.0% to 2.0%",
+        "1.0% to 1.5%",
+        "1.5% to 2.0%",
         ">= 2.0%",
     )
+
+@dataclass(frozen=True)
+class DayReturnBuckets:
+    edges: tuple[float, ...] = (
+        -np.inf,
+        -0.02,
+        -0.015,
+        -0.01,
+        -0.005,
+        0.0,
+        0.005,
+        0.01,
+        0.015,
+        0.02,
+        np.inf,
+    )
+    labels: tuple[str, ...] = (
+        "< -2.0%",
+        "-2.0% to -1.5%",
+        "-1.5% to -1.0%",
+        "-1.0% to -0.5%",
+        "-0.5% to 0.0%",
+        "0.0% to 0.5%",
+        "0.5% to 1.0%",
+        "1.0% to 1.5%",
+        "1.5% to 2.0%",
+        ">= 2.0%",
+    )
+
+def summarize_by_day_return_bucket(
+    df: pd.DataFrame, buckets: DayReturnBuckets
+) -> pd.DataFrame:
+    df = df.dropna(subset=["day_return", "next_day_return"]).copy()
+
+    df["day_return_bucket"] = pd.cut(
+        df["day_return"],
+        bins=list(buckets.edges),
+        labels=list(buckets.labels),
+        right=False,
+        include_lowest=True,
+    )
+
+    grouped = df.groupby("day_return_bucket", observed=True)
+
+    out = pd.DataFrame(
+        {
+            "n": grouped.size(),
+            "day_return_mean_%": grouped["day_return"].mean() * 100.0,
+            "day_return_median_%": grouped["day_return"].median() * 100.0,
+            "next_day_mean_%": grouped["next_day_return"].mean() * 100.0,
+            "next_day_median_%": grouped["next_day_return"].median() * 100.0,
+        }
+    )
+
+    return out.reset_index()
+
+
 
 
 def summarize_by_gap_bucket(df: pd.DataFrame, buckets: GapBuckets) -> pd.DataFrame:
@@ -89,6 +150,8 @@ def main() -> None:
     df["gap_return"] = gap_return(df["close"], df["open"])
     df["intraday_return"] = intraday_return(df["open"], df["close"])
     df["daily_range"] = daily_range(df["open"], df["high"], df["low"])
+    # Close-to-close day return
+    df["day_return"] = df["close"] / df["close"].shift(1) - 1.0
     df["next_day_return"] = (df["close"].shift(-1) / df["close"]) - 1.0
 
     summary = summarize_by_gap_bucket(df, GapBuckets())
@@ -111,6 +174,24 @@ def main() -> None:
     print("\nSPX gap bucket summary (same-day intraday, range, and next-day return):\n")
     print(pretty.to_string(index=False))
 
+    day_summary = summarize_by_day_return_bucket(df, DayReturnBuckets())
+
+    pretty_day = day_summary.copy()
+    for col in [
+        "day_return_mean_%",
+        "day_return_median_%",
+        "next_day_mean_%",
+        "next_day_median_%",
+    ]:
+
+        pretty_day[col] = pretty_day[col].round(4)
+
+    print("\nSPX next-day returns conditional on prior day return:\n")
+    print(pretty_day.to_string(index=False))
+
+
+
+
     print("\nSample computed rows:\n")
     cols = [
         "open",
@@ -122,7 +203,7 @@ def main() -> None:
         "daily_range",
         "next_day_return",
     ]
-    print(df[cols].tail(10).to_string())
+    print(df[cols].tail(1000).to_string())
 
 
 if __name__ == "__main__":
