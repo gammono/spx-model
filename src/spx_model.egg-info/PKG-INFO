@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: spx-model
+Version: 0.1.0
+Summary: Deterministic SPX return, risk, and gap analysis model
+Requires-Python: >=3.11
+Requires-Dist: pandas>=2.0

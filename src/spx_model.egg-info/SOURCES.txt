@@ -1,0 +1,8 @@
+pyproject.toml
+src/spx_model/__init__.py
+src/spx_model/ingestion.py
+src/spx_model.egg-info/PKG-INFO
+src/spx_model.egg-info/SOURCES.txt
+src/spx_model.egg-info/dependency_links.txt
+src/spx_model.egg-info/requires.txt
+src/spx_model.egg-info/top_level.txt
