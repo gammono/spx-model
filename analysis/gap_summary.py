@@ -6,14 +6,23 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from spx_model.ingestion import load_spx_ohlc_csv
 from spx_model.gaps import gap_return, intraday_return, daily_range
+from spx_model.live_data import get_cached_spx_last_12_months
 
 
 @dataclass(frozen=True)
 class GapBuckets:
-    """Bucket edges for gap returns (in decimal, e.g. 0.01 = 1%)."""
-    edges: tuple[float, ...] = (-np.inf, -0.02, -0.01, -0.005, 0.0, 0.005, 0.01, 0.02, np.inf)
+    edges: tuple[float, ...] = (
+        -np.inf,
+        -0.02,
+        -0.01,
+        -0.005,
+        0.0,
+        0.005,
+        0.01,
+        0.02,
+        np.inf,
+    )
     labels: tuple[str, ...] = (
         "< -2.0%",
         "-2.0% to -1.0%",
@@ -27,7 +36,14 @@ class GapBuckets:
 
 
 def summarize_by_gap_bucket(df: pd.DataFrame, buckets: GapBuckets) -> pd.DataFrame:
-    df = df.dropna(subset=["gap_return", "intraday_return", "daily_range"]).copy()
+    df = df.dropna(
+        subset=[
+            "gap_return",
+            "intraday_return",
+            "daily_range",
+            "next_day_return",
+        ]
+    ).copy()
 
     df["gap_bucket"] = pd.cut(
         df["gap_return"],
@@ -47,48 +63,68 @@ def summarize_by_gap_bucket(df: pd.DataFrame, buckets: GapBuckets) -> pd.DataFra
             "intraday_median_%": grouped["intraday_return"].median() * 100.0,
             "range_mean_%": grouped["daily_range"].mean() * 100.0,
             "range_median_%": grouped["daily_range"].median() * 100.0,
+            "next_day_mean_%": grouped["next_day_return"].mean() * 100.0,
+            "next_day_median_%": grouped["next_day_return"].median() * 100.0,
         }
     )
 
-    # Friendlier formatting (keep numeric types; formatting happens at print time)
     return out.reset_index()
 
 
 def main() -> None:
-    data_path = Path("data/spx_daily.csv")
-    ohlc = load_spx_ohlc_csv(data_path)
+    df_live = get_cached_spx_last_12_months(
+        Path("data/spx_last12m.csv"),
+        max_age_hours=24,
+    )
 
     df = pd.DataFrame(
         {
-            "open": ohlc.open,
-            "high": ohlc.high,
-            "low": ohlc.low,
-            "close": ohlc.close,
+            "open": df_live["open"],
+            "high": df_live["high"],
+            "low": df_live["low"],
+            "close": df_live["close"],
         }
     )
 
     df["gap_return"] = gap_return(df["close"], df["open"])
     df["intraday_return"] = intraday_return(df["open"], df["close"])
     df["daily_range"] = daily_range(df["open"], df["high"], df["low"])
+    df["next_day_return"] = (df["close"].shift(-1) / df["close"]) - 1.0
 
     summary = summarize_by_gap_bucket(df, GapBuckets())
 
     pd.set_option("display.width", 140)
     pd.set_option("display.max_rows", 200)
 
-    # Pretty print with rounding for readability
     pretty = summary.copy()
-    for col in ["gap_mean_%", "intraday_mean_%", "intraday_median_%", "range_mean_%", "range_median_%"]:
+    for col in [
+        "gap_mean_%",
+        "intraday_mean_%",
+        "intraday_median_%",
+        "range_mean_%",
+        "range_median_%",
+        "next_day_mean_%",
+        "next_day_median_%",
+    ]:
         pretty[col] = pretty[col].round(4)
 
-    print("\nSPX gap bucket summary (same-day intraday & range):\n")
+    print("\nSPX gap bucket summary (same-day intraday, range, and next-day return):\n")
     print(pretty.to_string(index=False))
 
-    # Optional: show the last few computed rows for sanity
     print("\nSample computed rows:\n")
-    cols = ["open", "high", "low", "close", "gap_return", "intraday_return", "daily_range"]
-    print(df[cols].tail(5).to_string())
+    cols = [
+        "open",
+        "high",
+        "low",
+        "close",
+        "gap_return",
+        "intraday_return",
+        "daily_range",
+        "next_day_return",
+    ]
+    print(df[cols].tail(10).to_string())
 
 
 if __name__ == "__main__":
     main()
+
